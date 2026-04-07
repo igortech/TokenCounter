@@ -194,7 +194,7 @@ export default function App() {
                   ) : (
                     <Play className="w-4 h-4" />
                   )}
-                  Рассчитать
+                  Calculate
                 </button>
               </div>
               
