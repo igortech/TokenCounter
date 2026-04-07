@@ -1,0 +1,5 @@
+{
+  "name": "TokenCounter",
+  "description": "Приложение для подсчета токенов в промптах для различных популярных нейросетей 2026 года.",
+  "requestFramePermissions": []
+}
