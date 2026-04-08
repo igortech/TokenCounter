@@ -5,10 +5,22 @@
 @layer base {
   :root {
     color-scheme: light;
+    overscroll-behavior-y: none; /* Disable pull-to-refresh */
+    -webkit-tap-highlight-color: transparent;
   }
 
   :root.dark {
     color-scheme: dark;
+  }
+
+  body {
+    @apply antialiased;
+    -webkit-touch-callout: none;
+  }
+
+  /* Prevent text selection on UI elements but allow in input/output */
+  button, nav, header {
+    user-select: none;
   }
 
   /* Custom Scrollbar Styling */

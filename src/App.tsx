@@ -23,7 +23,17 @@ export default function App() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [optModalOpen, setOptModalOpen] = useState(false);
   const [pendingOptResult, setPendingOptResult] = useState<OptimizeResult | null>(null);
+  const [activeTab, setActiveTab] = useState<'editor' | 'tokens' | 'models'>('editor');
   
+  // Remove splash screen on mount
+  useEffect(() => {
+    const splash = document.getElementById('splash-screen');
+    if (splash) {
+      splash.style.opacity = '0';
+      setTimeout(() => splash.remove(), 400);
+    }
+  }, []);
+
   const [optConfig, setOptConfig] = useState({
     protectQuotes: true,
     vvodnie: true,
@@ -183,7 +193,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans selection:bg-indigo-500/30 transition-colors duration-300">
-      <div className="max-w-6xl mx-auto p-6 lg:p-8 flex flex-col h-screen">
+      <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-screen lg:h-screen">
         
         {/* Header */}
         <header className="flex items-center justify-between mb-8 shrink-0">
@@ -223,12 +233,12 @@ export default function App() {
         </header>
 
         {/* Main Content */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 pb-20 lg:pb-0">
           
           {/* Left Panel: Input & Visualizer */}
-          <div className="lg:col-span-7 flex flex-col gap-6 min-h-0">
+          <div className={`lg:col-span-7 flex flex-col gap-6 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'}`}>
             {/* Text Input */}
-            <div className="flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[200px]">
+            <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'tokens' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
                 <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
                   <AlignLeft className="w-4 h-4" />
@@ -241,7 +251,7 @@ export default function App() {
                       setPendingOptResult(optimize(text, { model: 'both', ...optConfig }));
                       setOptModalOpen(true);
                     }}
-                    className="text-xs flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer font-medium bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1.5 rounded-md"
+                    className="hidden lg:flex text-xs items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer font-medium bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1.5 rounded-md"
                   >
                     <Wand2 className="w-3.5 h-3.5" />
                     Optimize
@@ -265,7 +275,7 @@ export default function App() {
 
             {/* Token Visualizer */}
             {selectedResult?.tokens && selectedResult.tokens.length > 0 && (
-              <div className="flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[200px]">
+              <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'}`}>
                 <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
                   <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
                     <Type className="w-4 h-4" />
@@ -288,21 +298,21 @@ export default function App() {
           </div>
 
           {/* Right Panel: Results */}
-          <div className="lg:col-span-5 flex flex-col gap-6 overflow-hidden">
+          <div className={`lg:col-span-5 flex flex-col gap-6 lg:overflow-hidden ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'}`}>
             
-            {/* Primary Result: Selected Model & Stats */}
-            <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shrink-0 relative overflow-hidden shadow-sm">
+            {/* Primary Result: Selected Model & Stats (Visible on Tokens tab on mobile) */}
+            <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 lg:p-6 shrink-0 relative overflow-hidden shadow-sm ${activeTab === 'tokens' ? 'block' : 'hidden lg:block'}`}>
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-50"></div>
               
-              <div className="flex items-start justify-between mb-4">
+              <div className="flex items-start justify-between mb-3 lg:mb-4">
                 <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{selectedModel.name}</h2>
                 <div className="flex flex-col items-end gap-1 uppercase tracking-wider text-neutral-400 dark:text-neutral-500 font-medium">
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <Type className="w-4 h-4" />
+                  <div className="flex items-center gap-1.5 text-xs lg:text-sm">
+                    <Type className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
                     {charCount.toLocaleString()} chars
                   </div>
-                  <div className="flex items-center gap-1.5 text-[10px]">
-                    <AlignLeft className="w-3 h-3" />
+                  <div className="flex items-center gap-1.5 text-[9px] lg:text-[10px]">
+                    <AlignLeft className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
                     {wordCount.toLocaleString()} words
                   </div>
                 </div>
@@ -310,22 +320,22 @@ export default function App() {
               
               <div className="flex items-end justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="text-5xl font-semibold tracking-tight text-neutral-900 dark:text-white">
+                  <span className="text-3xl lg:text-5xl font-semibold tracking-tight text-neutral-900 dark:text-white">
                     {selectedResult?.calculating ? (
-                      <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+                      <RefreshCw className="w-6 h-6 lg:w-8 lg:h-8 text-indigo-500 animate-spin" />
                     ) : (
                       selectedResult?.count?.toLocaleString() || '—'
                     )}
                   </span>
-                  {!selectedResult?.calculating && <span className="text-neutral-500 mb-1">tokens</span>}
+                  {!selectedResult?.calculating && <span className="text-sm lg:text-base text-neutral-500 mb-0.5 lg:mb-1">tokens</span>}
                 </div>
                 {isCalculating && (
-                  <RefreshCw className="w-5 h-5 text-indigo-500 dark:text-indigo-400 animate-spin mb-2" />
+                  <RefreshCw className="w-4 h-4 lg:w-5 lg:h-5 text-indigo-500 dark:text-indigo-400 animate-spin mb-1 lg:mb-2" />
                 )}
               </div>
 
               {selectedResult?.error && (
-                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2.5">
+                <div className="mt-3 lg:mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-red-500/90 leading-relaxed">{selectedResult.error}</p>
                 </div>
@@ -333,7 +343,7 @@ export default function App() {
             </div>
 
             {/* Models List */}
-            <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col flex-1 min-h-0 overflow-hidden shadow-sm">
+            <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col flex-1 min-h-[400px] lg:min-h-0 lg:overflow-hidden shadow-sm ${activeTab === 'models' ? 'flex' : 'hidden lg:flex'}`}>
               <div className="flex-1 overflow-y-auto p-2">
                 <ul className="space-y-1">
                   {MODELS.map(model => {
@@ -375,6 +385,44 @@ export default function App() {
 
           </div>
         </div>
+
+        {/* Mobile Navigation */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 px-6 py-3 flex items-center justify-around z-40 pb-safe shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+          <button 
+            onClick={() => setActiveTab('editor')} 
+            className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'editor' ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'}`}
+          >
+            <AlignLeft className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Editor</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('tokens')} 
+            className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'tokens' ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'}`}
+          >
+            <Type className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Tokens</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('models')} 
+            className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'models' ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'}`}
+          >
+            <Hash className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Models</span>
+          </button>
+        </nav>
+
+        {/* Floating Action Button (Mobile Only) */}
+        {activeTab === 'editor' && text.trim() && (
+          <button 
+            onClick={() => {
+              setPendingOptResult(optimize(text, { model: 'both', ...optConfig }));
+              setOptModalOpen(true);
+            }}
+            className="lg:hidden fixed bottom-24 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
+          >
+            <Wand2 className="w-6 h-6" />
+          </button>
+        )}
       </div>
 
       {/* Optimization Modal */}
@@ -395,9 +443,9 @@ export default function App() {
             </div>
 
             {/* Body */}
-            <div className="overflow-hidden flex-1 flex flex-col md:flex-row">
+            <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
               {/* Left: Diff View */}
-              <div className="flex-1 p-6 overflow-y-auto bg-neutral-50 dark:bg-neutral-950/50">
+              <div className="flex-[2] p-6 overflow-y-auto bg-neutral-50 dark:bg-neutral-950/50 border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-800">
                 <div className="whitespace-pre-wrap text-[13px] leading-relaxed font-mono break-words">
                   {diffWordsWithSpace(text, pendingOptResult.text).map((part, i) => {
                     if (part.added) return <span key={i} className="bg-emerald-200/60 dark:bg-emerald-500/40 text-emerald-950 dark:text-emerald-50 rounded-sm px-0.5 mx-0.5">{part.value}</span>;
@@ -408,7 +456,7 @@ export default function App() {
               </div>
 
               {/* Right: Settings & Stats */}
-              <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 overflow-y-auto flex flex-col gap-6 shrink-0">
+              <div className="flex-1 md:flex-none md:w-80 bg-white dark:bg-neutral-900 p-6 overflow-y-auto flex flex-col gap-6">
                 {/* Stats */}
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-500/20">
