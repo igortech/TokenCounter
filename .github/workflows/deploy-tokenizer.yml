@@ -1,0 +1,27 @@
+name: Deploy Tokenizer to Production
+
+on:
+  push:
+    branches: [ release ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd /var/www/tokenizer.neiro-kod.ru
+            git fetch origin
+            git checkout release
+            git pull origin release
+            npm ci
+            npm run build
+            sudo chown -R www-data:www-data dist
+            sudo systemctl reload nginx
+            echo "✅ Deployed tokenizer at $(date)"
