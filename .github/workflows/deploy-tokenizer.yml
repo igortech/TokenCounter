@@ -1,0 +1,36 @@
+name: Deploy Tokenizer to Production
+
+on:
+  push:
+    branches: [ release ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then echo "❌ DEPLOY_HOST is empty"; exit 1; fi
+          if [ -z "${{ secrets.DEPLOY_USER }}" ]; then echo "❌ DEPLOY_USER is empty"; exit 1; fi
+          if [ -z "${{ secrets.DEPLOY_KEY }}" ]; then echo "❌ DEPLOY_KEY is empty"; exit 1; fi
+          echo "✅ All secrets present"
+          
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          debug: true
+          script: |
+            whoami
+            cd /var/www/tokenizer.neiro-kod.ru
+            git fetch origin
+            git checkout release || git checkout -b release origin/release
+            git pull origin release
+            npm ci
+            npm run build
+            sudo chown -R www-data:www-data dist
+            sudo systemctl reload nginx
+            echo "✅ Deployed successfully at $(date)"
