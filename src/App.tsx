@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { countTokens } from './lib/tokenCounter';
+import { countTokens, releaseTiktoken } from './lib/tokenCounter';
 import { optimize, OptimizeResult } from './lib/token-optimizer-ru';
 import { Hash, AlignLeft, Type, AlertCircle, RefreshCw, Play, CheckCircle2, XCircle, Sun, Moon, Monitor, Wand2, Settings2, ArrowRight, ArrowLeft } from 'lucide-react';
 import { diffWordsWithSpace } from 'diff';
 import { motion, AnimatePresence } from 'motion/react';
+import { Capacitor } from '@capacitor/core';
 
 const MODELS = [
   { provider: 'openai', id: 'gpt-5', name: 'GPT-5 / 4o / o3' },
@@ -66,6 +67,17 @@ export default function App() {
     normalizeNumbers: false,
     removeArticles: false,
   });
+
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // Fake splash screen to allow UI to render instantly before heavy logic
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        setIsReady(true);
+      }, 100); // Small delay to ensure native splash transitions smoothly
+    });
+  }, []);
 
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {    try {
       if (typeof window !== 'undefined') {
@@ -178,26 +190,62 @@ export default function App() {
     return () => { active = false; };
   }, [optConfig, optModalOpen, text]);
 
-  // Automatic calculation for all models
-  useEffect(() => {
-    const calculateAll = async () => {
-      if (!text.trim()) {
-        setResults({});
-        setIsCalculating(false);
-        return;
-      }
-      
-      setIsCalculating(true);
-      
-      // Initialize loading state
-      const initial: Record<string, any> = {};
-      MODELS.forEach(m => {
-        initial[m.id] = { calculating: true };
-      });
-      setResults(initial);
+  const [needsAllModelsCalc, setNeedsAllModelsCalc] = useState(false);
 
+  // 1. Mark all as calculating immediately when text changes
+  useEffect(() => {
+    if (!text.trim()) {
+      setResults({});
+      setNeedsAllModelsCalc(false);
+      return;
+    }
+    
+    setNeedsAllModelsCalc(true);
+    setResults(prev => {
+      const next = { ...prev };
+      MODELS.forEach(m => {
+        next[m.id] = { ...next[m.id], calculating: true };
+      });
+      return next;
+    });
+  }, [text]);
+
+  // 2. Calculate selected model (debounced)
+  useEffect(() => {
+    if (!text.trim()) return;
+    
+    const calculateSelected = async () => {
+      const model = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
+      try {
+        const result = await countTokens(text, model.provider, model.id);
+        setResults(prev => ({
+          ...prev,
+          [selectedModelId]: { count: result.count, tokens: result.tokens, calculating: false }
+        }));
+      } catch (err: any) {
+        setResults(prev => ({
+          ...prev,
+          [selectedModelId]: { error: err.message || "Error", calculating: false }
+        }));
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      calculateSelected();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [text, selectedModelId]);
+
+  // 3. Calculate all other models (debounced, only when visible)
+  useEffect(() => {
+    const isModelsVisible = activeTab === 'models' || (typeof window !== 'undefined' && window.innerWidth >= 1024);
+    if (!isModelsVisible || !needsAllModelsCalc || !text.trim()) return;
+
+    const calculateAll = async () => {
       // Calculate sequentially to avoid browser lag
       for (const model of MODELS) {
+        if (model.id === selectedModelId) continue;
         try {
           const result = await countTokens(text, model.provider, model.id);
           setResults(prev => ({
@@ -211,7 +259,12 @@ export default function App() {
           }));
         }
       }
-      setIsCalculating(false);
+      setNeedsAllModelsCalc(false);
+      
+      // Free memory after calculating all models ONLY ON MOBILE
+      if (Capacitor.isNativePlatform()) {
+        releaseTiktoken();
+      }
     };
 
     const timeoutId = setTimeout(() => {
@@ -219,7 +272,7 @@ export default function App() {
     }, 1000); // 1s debounce
 
     return () => clearTimeout(timeoutId);
-  }, [text]);
+  }, [text, activeTab, needsAllModelsCalc, selectedModelId]);
 
   const selectedModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
   const selectedResult = results[selectedModelId];
@@ -268,6 +321,10 @@ export default function App() {
     // Replace common tokenizer special characters with standard equivalents for display
     return str.replace(/ /g, ' ').replace(/Ġ/g, ' ').replace(/Ċ/g, '\n');
   };
+
+  if (!isReady) {
+    return <div className="min-h-screen bg-white dark:bg-neutral-950"></div>;
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans selection:bg-indigo-500/30 transition-colors duration-300">
@@ -364,7 +421,7 @@ export default function App() {
                 </div>
 
                 {/* Token Visualizer */}
-                {selectedResult?.tokens && selectedResult.tokens.length > 0 && (
+                {(selectedResult?.tokens && selectedResult.tokens.length > 0) || selectedResult?.calculating ? (
                   <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'}`}>
                     <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
                       <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
@@ -372,19 +429,25 @@ export default function App() {
                         Token Breakdown ({selectedModel.name})
                       </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
-                      {selectedResult.tokens.map((token, idx) => (
-                        <span 
-                          key={idx} 
-                          className={`inline px-[1px] py-[2px] rounded-sm ${TOKEN_COLORS[idx % TOKEN_COLORS.length]}`}
-                          title={`Token ID: ${token.id}`}
-                        >
-                          {formatTokenText(token.text)}
-                        </span>
-                      ))}
-                    </div>
+                    {selectedResult?.calculating ? (
+                      <div className="flex-1 flex items-center justify-center p-6">
+                        <RefreshCw className="w-6 h-6 text-neutral-400 dark:text-neutral-500 animate-spin" />
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-y-auto p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
+                        {selectedResult.tokens.map((token, idx) => (
+                          <span 
+                            key={idx} 
+                            className={`inline px-[1px] py-[2px] rounded-sm ${TOKEN_COLORS[idx % TOKEN_COLORS.length]}`}
+                            title={`Token ID: ${token.id}`}
+                          >
+                            {formatTokenText(token.text)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                ) : null}
               </motion.div>
             )}
 

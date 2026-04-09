@@ -1,4 +1,3 @@
-import { getEncoding } from 'js-tiktoken';
 import { env, AutoTokenizer } from '@xenova/transformers';
 
 // Disable local models, fetch from Hugging Face
@@ -10,8 +9,8 @@ env.allowLocalModels = false;
 // для кэширования в локальную папку сервера:
 // env.cacheDir = './models';
 
-const o200k = getEncoding('o200k_base');
-const cl100k = getEncoding('cl100k_base');
+let o200k: any = null;
+let cl100k: any = null;
 
 const tokenizerCache: Record<string, any> = {};
 
@@ -19,13 +18,19 @@ export async function countTokens(text: string, providerId: string, modelId: str
   if (!text) return { count: 0, tokens: [] };
 
   if (providerId === 'openai') {
+    if (!o200k || !cl100k) {
+      const { getEncoding } = await import('js-tiktoken');
+      if (!o200k) o200k = getEncoding('o200k_base');
+      if (!cl100k) cl100k = getEncoding('cl100k_base');
+    }
+
     const enc = (modelId.includes('gpt-4o') || modelId.includes('o1') || modelId.includes('o3') || modelId.includes('gpt-5') || modelId.includes('gpt-4.5')) 
       ? o200k 
       : cl100k;
     
     const encoded = enc.encode(text);
-    const tokens = Array.from(encoded).map(id => ({
-      id,
+    const tokens = Array.from(encoded).map((id: any) => ({
+      id: Number(id),
       text: enc.decode([id])
     }));
     
@@ -42,7 +47,7 @@ export async function countTokens(text: string, providerId: string, modelId: str
       
       // Convert Int32Array or similar to standard array for mapping
       const tokens = Array.from(encoded).map((id: any) => ({
-        id,
+        id: Number(id),
         text: tokenizer.decode([id])
       }));
       
@@ -54,4 +59,16 @@ export async function countTokens(text: string, providerId: string, modelId: str
   }
 
   throw new Error("Exact calculation not available for this provider");
+}
+
+export function releaseTiktoken() {
+  o200k = null;
+  cl100k = null;
+  // Clear HF cache if needed, though it's managed by the library
+  for (const key in tokenizerCache) {
+    delete tokenizerCache[key];
+  }
+  if (typeof global !== 'undefined' && (global as any).gc) {
+    (global as any).gc();
+  }
 }
