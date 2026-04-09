@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { countTokens } from './lib/tokenCounter';
 import { optimize, OptimizeResult } from './lib/token-optimizer-ru';
-import { Hash, AlignLeft, Type, AlertCircle, RefreshCw, Play, CheckCircle2, XCircle, Sun, Moon, Monitor, Wand2, Settings2 } from 'lucide-react';
+import { Hash, AlignLeft, Type, AlertCircle, RefreshCw, Play, CheckCircle2, XCircle, Sun, Moon, Monitor, Wand2, Settings2, ArrowRight, ArrowLeft } from 'lucide-react';
 import { diffWordsWithSpace } from 'diff';
+import { motion, AnimatePresence } from 'motion/react';
 
 const MODELS = [
   { provider: 'openai', id: 'gpt-5', name: 'GPT-5 / 4o / o3' },
@@ -24,6 +25,15 @@ export default function App() {
   const [optModalOpen, setOptModalOpen] = useState(false);
   const [pendingOptResult, setPendingOptResult] = useState<OptimizeResult | null>(null);
   const [activeTab, setActiveTab] = useState<'editor' | 'tokens' | 'models'>('editor');
+  const [slideDir, setSlideDir] = useState(1);
+  const [modelChangedOnTab, setModelChangedOnTab] = useState(false);
+
+  const changeTab = (newTab: 'editor' | 'tokens' | 'models') => {
+    if (newTab === activeTab) return;
+    const order = { editor: 0, tokens: 1, models: 2 };
+    setSlideDir(order[newTab] > order[activeTab] ? 1 : -1);
+    setActiveTab(newTab);
+  };
   
   // Remove splash screen on mount
   useEffect(() => {
@@ -51,6 +61,10 @@ export default function App() {
     compactLists: false,
     squeezePunctuation: false,
     compactKeyValue: false,
+    removeComments: false,
+    removeEmoji: false,
+    normalizeNumbers: false,
+    removeArticles: false,
   });
 
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {    try {
@@ -92,6 +106,40 @@ export default function App() {
     }
   }, [theme]);
   
+  useEffect(() => {
+    if (activeTab !== 'models') {
+      setModelChangedOnTab(false);
+    }
+  }, [activeTab]);
+
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    const diffX = touchStartX.current - touchEndX;
+    const diffY = touchStartY.current - touchEndY;
+
+    // Ensure it's a horizontal swipe and exceeds threshold
+    if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
+      if (diffX > 0) {
+        // Swipe Left -> Next
+        if (activeTab === 'editor') changeTab('tokens');
+        else if (activeTab === 'tokens') changeTab('models');
+      } else {
+        // Swipe Right -> Prev
+        if (activeTab === 'tokens') changeTab('editor');
+        else if (activeTab === 'models') changeTab('tokens');
+      }
+    }
+  };
+
   // Live update optimization when settings change
   useEffect(() => {
     let active = true;
@@ -177,6 +225,36 @@ export default function App() {
   const selectedResult = results[selectedModelId];
   const charCount = text.length;
   const wordCount = text.trim() === '' ? 0 : text.trim().split(/\s+/).length;
+  const digitCount = (text.match(/\d/g) || []).length;
+  const specialCount = (text.match(/[^a-zA-Z0-9\s\u0400-\u04FF]/g) || []).length;
+
+  const OPT_GROUPS = {
+    meaning: ['protectQuotes', 'vvodnie', 'kancelaria', 'pleonazm', 'passiv'],
+    code: ['minifyJson', 'removeComments', 'normalizeNumbers', 'compactKeyValue'],
+    formatting: ['stripHtml', 'stripMarkdown', 'rewriteUrls', 'dedupeLines', 'compactLists', 'squeezePunctuation', 'removeEmoji'],
+    dangerous: ['biznes', 'coach', 'razgovor'],
+    en: ['removeArticles']
+  } as const;
+
+  const toggleGroup = (group: keyof typeof OPT_GROUPS) => {
+    const keys = OPT_GROUPS[group];
+    const allChecked = keys.every(k => (optConfig as any)[k]);
+    const newState = { ...optConfig };
+    keys.forEach(k => {
+      (newState as any)[k] = !allChecked;
+    });
+    setOptConfig(newState);
+  };
+
+  const isGroupChecked = (group: keyof typeof OPT_GROUPS) => {
+    return OPT_GROUPS[group].every(k => (optConfig as any)[k]);
+  };
+
+  const isGroupIndeterminate = (group: keyof typeof OPT_GROUPS) => {
+    const keys = OPT_GROUPS[group];
+    const checkedCount = keys.filter(k => (optConfig as any)[k]).length;
+    return checkedCount > 0 && checkedCount < keys.length;
+  };
 
   const TOKEN_COLORS = [
     'bg-blue-200/60 dark:bg-blue-500/30 text-blue-900 dark:text-blue-100',
@@ -233,177 +311,213 @@ export default function App() {
         </header>
 
         {/* Main Content */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 pb-20 lg:pb-0">
-          
-          {/* Left Panel: Input & Visualizer */}
-          <div className={`lg:col-span-7 flex flex-col gap-6 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'}`}>
-            {/* Text Input */}
-            <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'tokens' ? 'hidden lg:flex' : 'flex'}`}>
-              <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
-                <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
-                  <AlignLeft className="w-4 h-4" />
-                  Prompt Text
-                </div>
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => {
-                      if (!text.trim()) return;
-                      setPendingOptResult(optimize(text, { model: 'both', ...optConfig }));
-                      setOptModalOpen(true);
-                    }}
-                    className="hidden lg:flex text-xs items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer font-medium bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1.5 rounded-md"
-                  >
-                    <Wand2 className="w-3.5 h-3.5" />
-                    Optimize
-                  </button>
-                  <button 
-                    onClick={() => setText('')}
-                    className="text-xs text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors cursor-pointer px-2 py-1.5"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Paste your prompt here... (Tokens for all models calculated automatically)"
-                className="flex-1 w-full bg-transparent p-6 resize-none outline-none text-neutral-800 dark:text-neutral-300 placeholder:text-neutral-400 dark:placeholder:text-neutral-600 leading-relaxed"
-                spellCheck={false}
-              />
-            </div>
-
-            {/* Token Visualizer */}
-            {selectedResult?.tokens && selectedResult.tokens.length > 0 && (
-              <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'}`}>
-                <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
-                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
-                    <Type className="w-4 h-4" />
-                    Token Breakdown ({selectedModel.name})
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
-                  {selectedResult.tokens.map((token, idx) => (
-                    <span 
-                      key={idx} 
-                      className={`inline px-[1px] py-[2px] rounded-sm ${TOKEN_COLORS[idx % TOKEN_COLORS.length]}`}
-                      title={`Token ID: ${token.id}`}
-                    >
-                      {formatTokenText(token.text)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right Panel: Results */}
-          <div className={`lg:col-span-5 flex flex-col gap-6 lg:overflow-hidden ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'}`}>
-            
-            {/* Primary Result: Selected Model & Stats (Visible on Tokens tab on mobile) */}
-            <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 lg:p-6 shrink-0 relative overflow-hidden shadow-sm ${activeTab === 'tokens' ? 'block' : 'hidden lg:block'}`}>
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-50"></div>
-              
-              <div className="flex items-start justify-between mb-3 lg:mb-4">
-                <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{selectedModel.name}</h2>
-                <div className="flex flex-col items-end gap-1 uppercase tracking-wider text-neutral-400 dark:text-neutral-500 font-medium">
-                  <div className="flex items-center gap-1.5 text-xs lg:text-sm">
-                    <Type className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
-                    {charCount.toLocaleString()} chars
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[9px] lg:text-[10px]">
-                    <AlignLeft className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
-                    {wordCount.toLocaleString()} words
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex items-end justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl lg:text-5xl font-semibold tracking-tight text-neutral-900 dark:text-white">
-                    {selectedResult?.calculating ? (
-                      <RefreshCw className="w-6 h-6 lg:w-8 lg:h-8 text-indigo-500 animate-spin" />
-                    ) : (
-                      selectedResult?.count?.toLocaleString() || '—'
-                    )}
-                  </span>
-                  {!selectedResult?.calculating && <span className="text-sm lg:text-base text-neutral-500 mb-0.5 lg:mb-1">tokens</span>}
-                </div>
-                {isCalculating && (
-                  <RefreshCw className="w-4 h-4 lg:w-5 lg:h-5 text-indigo-500 dark:text-indigo-400 animate-spin mb-1 lg:mb-2" />
-                )}
-              </div>
-
-              {selectedResult?.error && (
-                <div className="mt-3 lg:mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2.5">
-                  <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-red-500/90 leading-relaxed">{selectedResult.error}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Models List */}
-            <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col flex-1 min-h-[400px] lg:min-h-0 lg:overflow-hidden shadow-sm ${activeTab === 'models' ? 'flex' : 'hidden lg:flex'}`}>
-              <div className="flex-1 overflow-y-auto p-2">
-                <ul className="space-y-1">
-                  {MODELS.map(model => {
-                    const result = results[model.id];
-                    const isSelected = model.id === selectedModelId;
-
-                    return (
-                      <li 
-                        key={model.id} 
-                        onClick={() => setSelectedModelId(model.id)}
-                        className={`flex items-center justify-between p-3 rounded-xl transition-all cursor-pointer ${
-                          isSelected 
-                            ? 'bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30' 
-                            : 'hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50 border border-transparent'
-                        }`}
+        <motion.div 
+          className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 pb-20 lg:pb-0 relative"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <AnimatePresence mode="wait">
+            {/* Left Panel: Input & Visualizer */}
+            {(activeTab === 'editor' || activeTab === 'tokens' || window.innerWidth >= 1024) && (
+              <motion.div 
+                key={`left-panel-${activeTab}`}
+                initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 20 : -20 } : false}
+                animate={{ opacity: 1, x: 0 }}
+                exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -20 : 20 } : false}
+                transition={{ duration: 0.2 }}
+                className={`lg:col-span-7 flex flex-col gap-6 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'} order-2 lg:order-1`}
+              >
+                {/* Text Input */}
+                <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'tokens' ? 'hidden lg:flex' : 'flex'}`}>
+                  <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                      <AlignLeft className="w-4 h-4" />
+                      Prompt Text
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => {
+                          if (!text.trim()) return;
+                          setPendingOptResult(optimize(text, { model: 'both', ...optConfig }));
+                          setOptModalOpen(true);
+                        }}
+                        className="flex text-xs items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer font-medium bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1.5 rounded-md"
                       >
-                        <span className={`text-sm font-medium ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
-                          {model.name}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {result?.calculating ? (
-                            <RefreshCw className="w-4 h-4 text-neutral-400 dark:text-neutral-500 animate-spin" />
-                          ) : result?.error ? (
-                            <div className="flex items-center gap-1.5 text-red-500 dark:text-red-400" title={result.error}>
-                              <XCircle className="w-4 h-4" />
-                            </div>
-                          ) : (
-                            <div className={`flex items-center gap-2 ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-900 dark:text-white'}`}>
-                              <span className="font-semibold">{result?.count?.toLocaleString() || '—'}</span>
-                            </div>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </div>
+                        <Wand2 className="w-3.5 h-3.5" />
+                        Optimize
+                      </button>
+                      <button 
+                        onClick={() => setText('')}
+                        className="text-xs text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors cursor-pointer px-2 py-1.5"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="Paste your prompt here... (Tokens for all models calculated automatically)"
+                    className="flex-1 w-full bg-transparent p-6 resize-none outline-none text-neutral-800 dark:text-neutral-300 placeholder:text-neutral-400 dark:placeholder:text-neutral-600 leading-relaxed"
+                    spellCheck={false}
+                  />
+                </div>
 
-          </div>
-        </div>
+                {/* Token Visualizer */}
+                {selectedResult?.tokens && selectedResult.tokens.length > 0 && (
+                  <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'}`}>
+                    <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
+                      <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                        <Type className="w-4 h-4" />
+                        Token Breakdown ({selectedModel.name})
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
+                      {selectedResult.tokens.map((token, idx) => (
+                        <span 
+                          key={idx} 
+                          className={`inline px-[1px] py-[2px] rounded-sm ${TOKEN_COLORS[idx % TOKEN_COLORS.length]}`}
+                          title={`Token ID: ${token.id}`}
+                        >
+                          {formatTokenText(token.text)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {/* Right Panel: Results */}
+            {(activeTab === 'tokens' || activeTab === 'models' || window.innerWidth >= 1024) && (
+              <motion.div 
+                key={`right-panel-${activeTab}`}
+                initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 20 : -20 } : false}
+                animate={{ opacity: 1, x: 0 }}
+                exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -20 : 20 } : false}
+                transition={{ duration: 0.2 }}
+                className={`lg:col-span-5 flex flex-col gap-6 lg:overflow-hidden ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'} order-1 lg:order-2`}
+              >
+                
+                {/* Primary Result: Selected Model & Stats (Visible on Tokens tab on mobile) */}
+                <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-3 lg:p-5 shrink-0 relative overflow-hidden shadow-sm ${activeTab === 'tokens' ? 'block' : 'hidden lg:block'}`}>
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-50"></div>
+                  
+                  <div className="flex items-start justify-between mb-2 lg:mb-3">
+                    <div>
+                      <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{selectedModel.name}</h2>
+                      <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-4xl lg:text-5xl font-bold tracking-tighter text-neutral-900 dark:text-white leading-none">
+                          {selectedResult?.calculating ? (
+                            <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
+                          ) : (
+                            selectedResult?.count?.toLocaleString() || '—'
+                          )}
+                        </span>
+                        {!selectedResult?.calculating && <span className="text-[10px] uppercase font-bold text-neutral-400 dark:text-neutral-500 tracking-wider">tokens</span>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 uppercase tracking-wider text-neutral-400 dark:text-neutral-500 font-medium">
+                      <div className="flex items-center gap-1.5 text-xs lg:text-sm">
+                        <Type className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                        {charCount.toLocaleString()} chars
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[9px] lg:text-[10px]">
+                        <AlignLeft className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
+                        {wordCount.toLocaleString()} words
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[9px] lg:text-[10px]">
+                        <span className="font-bold">#</span>
+                        {digitCount.toLocaleString()} digits
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[9px] lg:text-[10px]">
+                        <span className="font-bold">@</span>
+                        {specialCount.toLocaleString()} symbols
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {isCalculating && !selectedResult?.calculating && (
+                    <div className="absolute bottom-4 right-4">
+                      <RefreshCw className="w-4 h-4 text-indigo-500 dark:text-indigo-400 animate-spin" />
+                    </div>
+                  )}
+
+                  {selectedResult?.error && (
+                    <div className="mt-3 lg:mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <p className="text-xs text-red-500/90 leading-relaxed">{selectedResult.error}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Models List */}
+                <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col flex-1 min-h-[400px] lg:min-h-0 lg:overflow-hidden shadow-sm ${activeTab === 'models' ? 'flex' : 'hidden lg:flex'}`}>
+                  <div className="flex-1 overflow-y-auto p-2">
+                    <ul className="space-y-1">
+                      {MODELS.map(model => {
+                        const result = results[model.id];
+                        const isSelected = model.id === selectedModelId;
+
+                        return (
+                          <li 
+                            key={model.id} 
+                            onClick={() => {
+                              setSelectedModelId(model.id);
+                              setModelChangedOnTab(true);
+                            }}
+                            className={`flex items-center justify-between p-3 rounded-xl transition-all cursor-pointer ${
+                              isSelected 
+                                ? 'bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30' 
+                                : 'hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50 border border-transparent'
+                            }`}
+                          >
+                            <span className={`text-sm font-medium ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
+                              {model.name}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {result?.calculating ? (
+                                <RefreshCw className="w-4 h-4 text-neutral-400 dark:text-neutral-500 animate-spin" />
+                              ) : result?.error ? (
+                                <div className="flex items-center gap-1.5 text-red-500 dark:text-red-400" title={result.error}>
+                                  <XCircle className="w-4 h-4" />
+                                </div>
+                              ) : (
+                                <div className={`flex items-center gap-2 ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-900 dark:text-white'}`}>
+                                  <span className="font-semibold">{result?.count?.toLocaleString() || '—'}</span>
+                                </div>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </div>
+
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
 
         {/* Mobile Navigation */}
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 px-6 py-3 flex items-center justify-around z-40 pb-safe shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
           <button 
-            onClick={() => setActiveTab('editor')} 
+            onClick={() => changeTab('editor')} 
             className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'editor' ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'}`}
           >
             <AlignLeft className="w-5 h-5" />
             <span className="text-[10px] font-medium">Editor</span>
           </button>
           <button 
-            onClick={() => setActiveTab('tokens')} 
+            onClick={() => changeTab('tokens')} 
             className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'tokens' ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'}`}
           >
             <Type className="w-5 h-5" />
             <span className="text-[10px] font-medium">Tokens</span>
           </button>
           <button 
-            onClick={() => setActiveTab('models')} 
+            onClick={() => changeTab('models')} 
             className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'models' ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'}`}
           >
             <Hash className="w-5 h-5" />
@@ -411,16 +525,22 @@ export default function App() {
           </button>
         </nav>
 
-        {/* Floating Action Button (Mobile Only) */}
+        {/* Floating Action Buttons (Mobile Only) */}
         {activeTab === 'editor' && text.trim() && (
           <button 
-            onClick={() => {
-              setPendingOptResult(optimize(text, { model: 'both', ...optConfig }));
-              setOptModalOpen(true);
-            }}
+            onClick={() => changeTab('tokens')}
             className="lg:hidden fixed bottom-24 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
           >
-            <Wand2 className="w-6 h-6" />
+            <ArrowRight className="w-6 h-6" />
+          </button>
+        )}
+
+        {activeTab === 'models' && modelChangedOnTab && (
+          <button 
+            onClick={() => changeTab('tokens')}
+            className="lg:hidden fixed bottom-24 left-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
+          >
+            <ArrowLeft className="w-6 h-6" />
           </button>
         )}
       </div>
@@ -488,7 +608,18 @@ export default function App() {
                   <div className="space-y-4">
                     {/* Смысл */}
                     <div>
-                      <div className="text-[10px] uppercase font-bold tracking-wider text-neutral-500 mb-2">Текст и смысл</div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input 
+                            type="checkbox" 
+                            checked={isGroupChecked('meaning')}
+                            ref={el => el && (el.indeterminate = isGroupIndeterminate('meaning'))}
+                            onChange={() => toggleGroup('meaning')}
+                            className="rounded text-indigo-500 w-3.5 h-3.5"
+                          />
+                          <div className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">Текст и смысл</div>
+                        </label>
+                      </div>
                       <div className="space-y-2.5">
                         <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
                           <input type="checkbox" checked={optConfig.protectQuotes} onChange={e => setOptConfig({...optConfig, protectQuotes: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
@@ -513,9 +644,54 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* Код и данные */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input 
+                            type="checkbox" 
+                            checked={isGroupChecked('code')}
+                            ref={el => el && (el.indeterminate = isGroupIndeterminate('code'))}
+                            onChange={() => toggleGroup('code')}
+                            className="rounded text-indigo-500 w-3.5 h-3.5"
+                          />
+                          <div className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">Код и данные</div>
+                        </label>
+                      </div>
+                      <div className="space-y-2.5">
+                        <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
+                          <input type="checkbox" checked={optConfig.minifyJson} onChange={e => setOptConfig({...optConfig, minifyJson: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
+                          <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">📦 Минифицировать JSON</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
+                          <input type="checkbox" checked={optConfig.removeComments} onChange={e => setOptConfig({...optConfig, removeComments: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
+                          <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">💬 Удалить комментарии</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
+                          <input type="checkbox" checked={optConfig.normalizeNumbers} onChange={e => setOptConfig({...optConfig, normalizeNumbers: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
+                          <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">🔢 Нормализовать числа</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
+                          <input type="checkbox" checked={optConfig.compactKeyValue} onChange={e => setOptConfig({...optConfig, compactKeyValue: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
+                          <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">🏷️ Сжать key: value</span>
+                        </label>
+                      </div>
+                    </div>
+
                     {/* Форматирование */}
                     <div>
-                      <div className="text-[10px] uppercase font-bold tracking-wider text-neutral-500 mb-2">Форматирование</div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input 
+                            type="checkbox" 
+                            checked={isGroupChecked('formatting')}
+                            ref={el => el && (el.indeterminate = isGroupIndeterminate('formatting'))}
+                            onChange={() => toggleGroup('formatting')}
+                            className="rounded text-indigo-500 w-3.5 h-3.5"
+                          />
+                          <div className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">Форматирование</div>
+                        </label>
+                      </div>
                       <div className="space-y-2.5">
                         <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
                           <input type="checkbox" checked={optConfig.stripHtml} onChange={e => setOptConfig({...optConfig, stripHtml: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
@@ -542,15 +718,48 @@ export default function App() {
                           <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">!! Сжать пунктуацию</span>
                         </label>
                         <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
-                          <input type="checkbox" checked={optConfig.compactKeyValue} onChange={e => setOptConfig({...optConfig, compactKeyValue: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
-                          <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">🏷️ Сжать key: value</span>
+                          <input type="checkbox" checked={optConfig.removeEmoji} onChange={e => setOptConfig({...optConfig, removeEmoji: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
+                          <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">✨ Удалить Emoji</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Стиль (EN) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input 
+                            type="checkbox" 
+                            checked={isGroupChecked('en')}
+                            ref={el => el && (el.indeterminate = isGroupIndeterminate('en'))}
+                            onChange={() => toggleGroup('en')}
+                            className="rounded text-indigo-500 w-3.5 h-3.5"
+                          />
+                          <div className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">Стиль (EN)</div>
+                        </label>
+                      </div>
+                      <div className="space-y-2.5">
+                        <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
+                          <input type="checkbox" checked={optConfig.removeArticles} onChange={e => setOptConfig({...optConfig, removeArticles: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
+                          <span className="group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">🅰️ Удалить артикли</span>
                         </label>
                       </div>
                     </div>
                     
                     {/* Опасно */}
                     <div>
-                      <div className="text-[10px] uppercase font-bold tracking-wider text-amber-600 dark:text-amber-500 mb-2">Опасно для промптов</div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input 
+                            type="checkbox" 
+                            checked={isGroupChecked('dangerous')}
+                            ref={el => el && (el.indeterminate = isGroupIndeterminate('dangerous'))}
+                            onChange={() => toggleGroup('dangerous')}
+                            className="rounded text-indigo-500 w-3.5 h-3.5"
+                          />
+                          <div className="text-[10px] uppercase font-bold tracking-wider text-amber-600 dark:text-amber-500">Опасно для промптов</div>
+                        </label>
+                      </div>
                       <div className="space-y-2.5">
                         <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none group">
                           <input type="checkbox" checked={optConfig.biznes} onChange={e => setOptConfig({...optConfig, biznes: e.target.checked})} className="rounded text-indigo-500 w-4 h-4" />
