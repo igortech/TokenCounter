@@ -386,33 +386,34 @@ export default function App() {
         {/* Main Content */}
         <motion.div 
           className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 pb-20 lg:pb-0 relative overflow-hidden"
+          drag={typeof window !== 'undefined' && window.innerWidth < 1024 ? "x" : false}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.2}
+          onDragEnd={(e, { offset, velocity }) => {
+            const swipe = Math.abs(offset.x) * velocity.x;
+            if (swipe < -500 || offset.x < -50) {
+              if (activeTab === 'editor') changeTab('tokens');
+              else if (activeTab === 'tokens') changeTab('models');
+            } else if (swipe > 500 || offset.x > 50) {
+              if (activeTab === 'tokens') changeTab('editor');
+              else if (activeTab === 'models') changeTab('tokens');
+            }
+          }}
         >
           <AnimatePresence mode="popLayout" initial={false}>
             {/* Left Panel: Input & Visualizer */}
             {(activeTab === 'editor' || activeTab === 'tokens' || window.innerWidth >= 1024) && (
               <motion.div 
                 key={`left-panel-${activeTab}`}
-                drag={typeof window !== 'undefined' && window.innerWidth < 1024 ? "x" : false}
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.7}
-                onDragEnd={(e, { offset, velocity }) => {
-                  const swipe = Math.abs(offset.x) * velocity.x;
-                  if (swipe < -500 || offset.x < -50) {
-                    if (activeTab === 'editor') changeTab('tokens');
-                    else if (activeTab === 'tokens') changeTab('models');
-                  } else if (swipe > 500 || offset.x > 50) {
-                    if (activeTab === 'tokens') changeTab('editor');
-                    else if (activeTab === 'models') changeTab('tokens');
-                  }
-                }}
                 initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 50 : -50 } : false}
                 animate={{ opacity: 1, x: 0 }}
                 exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -50 : 50 } : false}
                 transition={{ duration: 0.3, ease: "easeOut" }}
-                className={`lg:col-span-7 flex flex-col gap-6 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'} order-2 lg:order-1 w-full`}
+                className={`lg:col-span-7 flex flex-col gap-6 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'} order-2 lg:order-1 w-full pointer-events-none`}
               >
-                {/* Text Input */}
-                <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'tokens' ? 'hidden lg:flex' : 'flex'}`}>
+                <div className="flex flex-col gap-6 flex-1 pointer-events-auto">
+                  {/* Text Input */}
+                  <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'tokens' ? 'hidden lg:flex' : 'flex'}`}>
                   <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
                     <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
                       <AlignLeft className="w-4 h-4" />
@@ -475,34 +476,22 @@ export default function App() {
                     )}
                   </div>
                 ) : null}
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
             {/* Right Panel: Results */}
             {(activeTab === 'tokens' || activeTab === 'models' || window.innerWidth >= 1024) && (
               <motion.div 
                 key={`right-panel-${activeTab}`}
-                drag={typeof window !== 'undefined' && window.innerWidth < 1024 ? "x" : false}
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.7}
-                onDragEnd={(e, { offset, velocity }) => {
-                  const swipe = Math.abs(offset.x) * velocity.x;
-                  if (swipe < -500 || offset.x < -50) {
-                    if (activeTab === 'editor') changeTab('tokens');
-                    else if (activeTab === 'tokens') changeTab('models');
-                  } else if (swipe > 500 || offset.x > 50) {
-                    if (activeTab === 'tokens') changeTab('editor');
-                    else if (activeTab === 'models') changeTab('tokens');
-                  }
-                }}
                 initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 50 : -50 } : false}
                 animate={{ opacity: 1, x: 0 }}
                 exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -50 : 50 } : false}
                 transition={{ duration: 0.3, ease: "easeOut" }}
-                className={`lg:col-span-5 flex flex-col gap-6 lg:overflow-hidden ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'} order-1 lg:order-2 w-full`}
+                className={`lg:col-span-5 flex flex-col gap-6 lg:overflow-hidden ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'} order-1 lg:order-2 w-full pointer-events-none`}
               >
-                
-                {/* Primary Result: Selected Model & Stats (Visible on Tokens tab on mobile) */}
+                <div className="flex flex-col gap-6 flex-1 pointer-events-auto">
+                  {/* Primary Result: Selected Model & Stats (Visible on Tokens tab on mobile) */}
                 <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-3 lg:p-5 shrink-0 relative overflow-hidden shadow-sm ${activeTab === 'tokens' ? 'block' : 'hidden lg:block'}`}>
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-50"></div>
                   
@@ -597,9 +586,9 @@ export default function App() {
                     </ul>
                   </div>
                 </div>
-
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
           </AnimatePresence>
         </motion.div>
 
