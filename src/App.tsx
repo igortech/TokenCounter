@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { countTokens, releaseTiktoken } from './lib/tokenCounter';
 import { optimize, OptimizeResult } from './lib/token-optimizer-ru';
-import { Hash, AlignLeft, Type, AlertCircle, RefreshCw, Play, CheckCircle2, XCircle, Sun, Moon, Monitor, Wand2, Settings2, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Hash, AlignLeft, Type, AlertCircle, RefreshCw, Play, CheckCircle2, XCircle, Sun, Moon, Monitor, Wand2, Settings2, ArrowRight, ArrowLeft, Share2, Download } from 'lucide-react';
 import { diffWordsWithSpace } from 'diff';
 import { motion, AnimatePresence } from 'motion/react';
 import { Capacitor } from '@capacitor/core';
+import * as htmlToImage from 'html-to-image';
 
 const MODELS = [
   { provider: 'openai', id: 'gpt-5', name: 'GPT-5 / 4o / o3' },
@@ -29,6 +30,51 @@ export default function App() {
   const [slideDir, setSlideDir] = useState(1);
   const [modelChangedOnTab, setModelChangedOnTab] = useState(false);
   const [fabBottom, setFabBottom] = useState(112); // 112px = bottom-28 (increased from 96)
+  const [isSharing, setIsSharing] = useState(false);
+  const shareAreaRef = useRef<HTMLDivElement>(null);
+
+  const handleShare = async () => {
+    if (!shareAreaRef.current) return;
+    setIsSharing(true);
+    try {
+      // Small delay to ensure UI updates if needed
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const dataUrl = await htmlToImage.toPng(shareAreaRef.current, {
+        backgroundColor: theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? '#0a0a0a' : '#ffffff',
+        style: {
+          transform: 'scale(1)',
+        },
+        filter: (node: any) => {
+          // Exclude elements with 'no-share' class
+          if (node.classList && node.classList.contains('no-share')) return false;
+          return true;
+        }
+      });
+
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], 'tokenizer-share.png', { type: 'image/png' });
+
+      if (navigator.share) {
+        await navigator.share({
+          files: [file],
+          title: 'AI Token Counter Results',
+          text: 'Visualized by Tokenizer tokenizer.neiro-kod.ru',
+          url: 'https://tokenizer.neiro-kod.ru'
+        });
+      } else {
+        // Fallback: download
+        const link = document.createElement('a');
+        link.download = 'tokenizer-share.png';
+        link.href = dataUrl;
+        link.click();
+      }
+    } catch (err) {
+      console.error('Sharing failed:', err);
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   useEffect(() => {
     if (!window.visualViewport) return;
@@ -344,7 +390,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans selection:bg-indigo-500/30 transition-colors duration-300">
-      <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-screen lg:h-screen">
+      <div ref={shareAreaRef} className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-screen lg:h-screen">
         
         {/* Header */}
         <header className="flex items-center justify-between mb-8 shrink-0">
@@ -354,38 +400,50 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Tokenizer</h1>
-              <p className="text-sm text-neutral-500">2026 Edition</p>
+              <p className="text-sm text-neutral-500">AI Token Counter</p>
             </div>
           </div>
 
-          <div className="flex items-center bg-neutral-100 dark:bg-neutral-900 p-1 rounded-xl border border-neutral-200 dark:border-neutral-800">
-            <button
-              onClick={() => setTheme('light')}
-              className={`p-2 rounded-lg transition-all ${theme === 'light' ? 'bg-white text-indigo-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
-              title="Light Mode"
-            >
-              <Sun className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setTheme('system')}
-              className={`p-2 rounded-lg transition-all ${theme === 'system' ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
-              title="System Preference"
-            >
-              <Monitor className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setTheme('dark')}
-              className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'bg-neutral-800 text-indigo-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
-              title="Dark Mode"
-            >
-              <Moon className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-2 no-share">
+            {activeTab === 'tokens' && results[selectedModelId]?.tokens && (
+              <button
+                onClick={handleShare}
+                disabled={isSharing}
+                className={`flex flex-col items-center justify-center w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:scale-100 shrink-0`}
+              >
+                {isSharing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
+                <span className="mt-0.5 uppercase tracking-tighter">Share</span>
+              </button>
+            )}
+            <div className="flex items-center bg-neutral-100 dark:bg-neutral-900 p-1 rounded-xl border border-neutral-200 dark:border-neutral-800">
+              <button
+                onClick={() => setTheme('light')}
+                className={`p-2 rounded-lg transition-all ${theme === 'light' ? 'bg-white text-indigo-600 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                title="Light Mode"
+              >
+                <Sun className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setTheme('system')}
+                className={`p-2 rounded-lg transition-all ${theme === 'system' ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+                title="System Preference"
+              >
+                <Monitor className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setTheme('dark')}
+                className={`p-2 rounded-lg transition-all ${theme === 'dark' ? 'bg-neutral-800 text-indigo-400 shadow-sm' : 'text-neutral-500 hover:text-neutral-300'}`}
+                title="Dark Mode"
+              >
+                <Moon className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </header>
 
         {/* Main Content */}
         <motion.div 
-          className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 pb-20 lg:pb-0 relative overflow-hidden"
+          className={`flex-1 grid grid-cols-1 lg:grid-cols-12 ${activeTab === 'tokens' ? 'gap-1.5' : 'gap-6'} min-h-0 pb-20 lg:pb-0 relative overflow-hidden`}
           drag={typeof window !== 'undefined' && window.innerWidth < 1024 ? "x" : false}
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.2}
@@ -593,7 +651,7 @@ export default function App() {
         </motion.div>
 
         {/* Mobile Navigation */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 px-6 py-3 flex items-center justify-around z-40 pb-safe shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 px-6 py-3 flex items-center justify-around z-40 pb-safe shadow-[0_-4px_12px_rgba(0,0,0,0.05)] no-share">
           <button 
             onClick={() => changeTab('editor')} 
             className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'editor' ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'}`}
@@ -622,7 +680,7 @@ export default function App() {
           <button 
             onClick={() => changeTab('tokens')}
             style={{ bottom: `${fabBottom}px` }}
-            className="lg:hidden fixed right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
+            className="lg:hidden fixed right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300 no-share"
           >
             <ArrowRight className="w-6 h-6" />
           </button>
@@ -632,7 +690,7 @@ export default function App() {
           <button 
             onClick={() => changeTab('tokens')}
             style={{ bottom: `${fabBottom}px` }}
-            className="lg:hidden fixed left-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
+            className="lg:hidden fixed left-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300 no-share"
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
