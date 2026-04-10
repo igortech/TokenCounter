@@ -28,6 +28,50 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'editor' | 'tokens' | 'models'>('editor');
   const [slideDir, setSlideDir] = useState(1);
   const [modelChangedOnTab, setModelChangedOnTab] = useState(false);
+  const [fabBottom, setFabBottom] = useState(112); // 112px = bottom-28 (increased from 96)
+
+  useEffect(() => {
+    if (!window.visualViewport) return;
+    
+    const initialHeight = window.innerHeight;
+    
+    const handleResize = () => {
+      const viewport = window.visualViewport;
+      if (!viewport) return;
+      
+      const layoutHeight = window.innerHeight;
+      const visualHeight = viewport.height;
+      const offsetTop = viewport.offsetTop;
+      
+      // Calculate how much is hidden by the keyboard
+      const hiddenByVisualViewport = layoutHeight - (visualHeight + offsetTop);
+      const hiddenByLayoutShrink = initialHeight - layoutHeight;
+      
+      const totalHidden = Math.max(hiddenByVisualViewport, hiddenByLayoutShrink);
+      
+      // If keyboard is open (totalHidden > 100), position FAB just above keyboard/nav
+      if (totalHidden > 100) {
+        if (hiddenByLayoutShrink > 100) {
+          // On Android, layout shrinks, nav moves up. Position FAB above nav.
+          setFabBottom(80); // 80px is roughly nav height (60px) + 20px margin
+        } else {
+          // On iOS, layout stays, keyboard covers bottom. Position FAB above keyboard.
+          setFabBottom(hiddenByVisualViewport + 20);
+        }
+      } else {
+        setFabBottom(112); // Default bottom-28
+      }
+    };
+
+    window.visualViewport.addEventListener('resize', handleResize);
+    window.visualViewport.addEventListener('scroll', handleResize);
+    handleResize();
+    
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('scroll', handleResize);
+    };
+  }, []);
 
   const changeTab = (newTab: 'editor' | 'tokens' | 'models') => {
     if (newTab === activeTab) return;
@@ -123,34 +167,6 @@ export default function App() {
       setModelChangedOnTab(false);
     }
   }, [activeTab]);
-
-  const touchStartX = useRef(0);
-  const touchStartY = useRef(0);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const touchEndX = e.changedTouches[0].clientX;
-    const touchEndY = e.changedTouches[0].clientY;
-    const diffX = touchStartX.current - touchEndX;
-    const diffY = touchStartY.current - touchEndY;
-
-    // Ensure it's a horizontal swipe and exceeds threshold
-    if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
-      if (diffX > 0) {
-        // Swipe Left -> Next
-        if (activeTab === 'editor') changeTab('tokens');
-        else if (activeTab === 'tokens') changeTab('models');
-      } else {
-        // Swipe Right -> Prev
-        if (activeTab === 'tokens') changeTab('editor');
-        else if (activeTab === 'models') changeTab('tokens');
-      }
-    }
-  };
 
   // Live update optimization when settings change
   useEffect(() => {
@@ -369,20 +385,31 @@ export default function App() {
 
         {/* Main Content */}
         <motion.div 
-          className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 pb-20 lg:pb-0 relative"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
+          className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 pb-20 lg:pb-0 relative overflow-hidden"
         >
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout" initial={false}>
             {/* Left Panel: Input & Visualizer */}
             {(activeTab === 'editor' || activeTab === 'tokens' || window.innerWidth >= 1024) && (
               <motion.div 
                 key={`left-panel-${activeTab}`}
-                initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 20 : -20 } : false}
+                drag={typeof window !== 'undefined' && window.innerWidth < 1024 ? "x" : false}
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.7}
+                onDragEnd={(e, { offset, velocity }) => {
+                  const swipe = Math.abs(offset.x) * velocity.x;
+                  if (swipe < -500 || offset.x < -50) {
+                    if (activeTab === 'editor') changeTab('tokens');
+                    else if (activeTab === 'tokens') changeTab('models');
+                  } else if (swipe > 500 || offset.x > 50) {
+                    if (activeTab === 'tokens') changeTab('editor');
+                    else if (activeTab === 'models') changeTab('tokens');
+                  }
+                }}
+                initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 50 : -50 } : false}
                 animate={{ opacity: 1, x: 0 }}
-                exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -20 : 20 } : false}
-                transition={{ duration: 0.2 }}
-                className={`lg:col-span-7 flex flex-col gap-6 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'} order-2 lg:order-1`}
+                exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -50 : 50 } : false}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className={`lg:col-span-7 flex flex-col gap-6 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'} order-2 lg:order-1 w-full`}
               >
                 {/* Text Input */}
                 <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'tokens' ? 'hidden lg:flex' : 'flex'}`}>
@@ -455,11 +482,24 @@ export default function App() {
             {(activeTab === 'tokens' || activeTab === 'models' || window.innerWidth >= 1024) && (
               <motion.div 
                 key={`right-panel-${activeTab}`}
-                initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 20 : -20 } : false}
+                drag={typeof window !== 'undefined' && window.innerWidth < 1024 ? "x" : false}
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.7}
+                onDragEnd={(e, { offset, velocity }) => {
+                  const swipe = Math.abs(offset.x) * velocity.x;
+                  if (swipe < -500 || offset.x < -50) {
+                    if (activeTab === 'editor') changeTab('tokens');
+                    else if (activeTab === 'tokens') changeTab('models');
+                  } else if (swipe > 500 || offset.x > 50) {
+                    if (activeTab === 'tokens') changeTab('editor');
+                    else if (activeTab === 'models') changeTab('tokens');
+                  }
+                }}
+                initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 50 : -50 } : false}
                 animate={{ opacity: 1, x: 0 }}
-                exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -20 : 20 } : false}
-                transition={{ duration: 0.2 }}
-                className={`lg:col-span-5 flex flex-col gap-6 lg:overflow-hidden ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'} order-1 lg:order-2`}
+                exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -50 : 50 } : false}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+                className={`lg:col-span-5 flex flex-col gap-6 lg:overflow-hidden ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'} order-1 lg:order-2 w-full`}
               >
                 
                 {/* Primary Result: Selected Model & Stats (Visible on Tokens tab on mobile) */}
@@ -592,7 +632,8 @@ export default function App() {
         {activeTab === 'editor' && text.trim() && (
           <button 
             onClick={() => changeTab('tokens')}
-            className="lg:hidden fixed bottom-24 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
+            style={{ bottom: `${fabBottom}px` }}
+            className="lg:hidden fixed right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
           >
             <ArrowRight className="w-6 h-6" />
           </button>
@@ -601,7 +642,8 @@ export default function App() {
         {activeTab === 'models' && modelChangedOnTab && (
           <button 
             onClick={() => changeTab('tokens')}
-            className="lg:hidden fixed bottom-24 left-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
+            style={{ bottom: `${fabBottom}px` }}
+            className="lg:hidden fixed left-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center z-40 animate-in fade-in slide-in-from-bottom-4 duration-300"
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
