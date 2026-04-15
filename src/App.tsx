@@ -11,12 +11,11 @@ const MODELS = [
   { provider: 'openai', id: 'gpt-5', name: 'GPT-5 / 4o / o3' },
   { provider: 'openai', id: 'gpt-4', name: 'GPT-4' },
   { provider: 'hf', id: 'Xenova/gemma-tokenizer', name: 'Gemini 2.5 / 2.0 / 1.5 / Gemma' },
-  { provider: 'deepseek', id: 'deepseek-ai/deepseek-coder-6.7b-base', name: 'DeepSeek Coder / V2' },
+  { provider: 'hf', id: 'Xenova/Qwen1.5-0.5B', name: 'Qwen 1.5 / 2.0 / 2.5' },
   { provider: 'deepseek', id: 'deepseek-ai/deepseek-llm-7b-chat', name: 'DeepSeek LLM / V3' },
   { provider: 'meta', id: 'Xenova/llama3-tokenizer', name: 'Llama 3 / 3.1' },
   { provider: 'meta', id: 'Xenova/llama2-tokenizer', name: 'Llama 2' },
-  { provider: 'hf', id: 'Xenova/mistral-tokenizer', name: 'Mistral 7B / Mixtral' },
-  { provider: 'hf', id: 'Xenova/Qwen1.5-0.5B', name: 'Qwen 1.5 / 2.0' }
+  { provider: 'hf', id: 'Xenova/mistral-tokenizer', name: 'Mistral 7B / Mixtral' }
 ];
 
 export default function App() {
@@ -159,6 +158,13 @@ export default function App() {
   });
 
   const [isReady, setIsReady] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 1024 : false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     // Fake splash screen to allow UI to render instantly before heavy logic
@@ -443,11 +449,12 @@ export default function App() {
 
         {/* Main Content */}
         <motion.div 
-          className={`flex-1 grid grid-cols-1 lg:grid-cols-12 ${activeTab === 'tokens' ? 'gap-1.5' : 'gap-6'} min-h-0 pb-20 lg:pb-0 relative overflow-hidden`}
-          drag={typeof window !== 'undefined' && window.innerWidth < 1024 ? "x" : false}
+          className={`flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 lg:gap-3 min-h-0 pb-20 lg:pb-0 relative overflow-hidden`}
+          drag={isMobile ? "x" : false}
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.2}
           onDragEnd={(e, { offset, velocity }) => {
+            if (!isMobile) return;
             const swipe = Math.abs(offset.x) * velocity.x;
             if (swipe < -500 || offset.x < -50) {
               if (activeTab === 'editor') changeTab('tokens');
@@ -460,18 +467,18 @@ export default function App() {
         >
           <AnimatePresence mode="popLayout" initial={false}>
             {/* Left Panel: Input & Visualizer */}
-            {(activeTab === 'editor' || activeTab === 'tokens' || window.innerWidth >= 1024) && (
+            {(activeTab === 'editor' || activeTab === 'tokens' || !isMobile) && (
               <motion.div 
-                key={`left-panel-${activeTab}`}
-                initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 50 : -50 } : false}
+                key={isMobile ? `left-panel-${activeTab}` : 'left-panel-desktop'}
+                initial={isMobile ? { opacity: 0, x: slideDir > 0 ? 50 : -50 } : false}
                 animate={{ opacity: 1, x: 0 }}
-                exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -50 : 50 } : false}
+                exit={isMobile ? { opacity: 0, x: slideDir > 0 ? -50 : 50 } : false}
                 transition={{ duration: 0.3, ease: "easeOut" }}
-                className={`lg:col-span-7 flex flex-col gap-6 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'} order-2 lg:order-1 w-full pointer-events-none`}
+                className={`lg:col-span-7 flex flex-col gap-2 lg:gap-3 min-h-0 ${activeTab === 'models' ? 'hidden lg:flex' : 'flex'} order-2 lg:order-1 w-full pointer-events-none`}
               >
-                <div className="flex flex-col gap-6 flex-1 pointer-events-auto">
+                <div className="flex flex-col gap-2 lg:gap-3 flex-1 min-h-0 pointer-events-auto">
                   {/* Text Input */}
-                  <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'tokens' ? 'hidden lg:flex' : 'flex'}`}>
+                  <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[200px] lg:min-h-[150px] ${isMobile && activeTab === 'tokens' ? 'hidden' : 'flex'}`}>
                   <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
                     <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
                       <AlignLeft className="w-4 h-4" />
@@ -501,14 +508,14 @@ export default function App() {
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     placeholder="Paste your prompt here... (Tokens for all models calculated automatically)"
-                    className="flex-1 w-full bg-transparent p-6 resize-none outline-none text-neutral-800 dark:text-neutral-300 placeholder:text-neutral-400 dark:placeholder:text-neutral-600 leading-relaxed"
+                    className="flex-1 w-full bg-transparent p-6 resize-none outline-none text-neutral-800 dark:text-neutral-300 placeholder:text-neutral-400 dark:placeholder:text-neutral-600 leading-relaxed overflow-y-auto min-h-0"
                     spellCheck={false}
                   />
                 </div>
 
                 {/* Token Visualizer */}
                 {(selectedResult?.tokens && selectedResult.tokens.length > 0) || selectedResult?.calculating ? (
-                  <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[300px] lg:min-h-[200px] ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'}`}>
+                  <div className={`flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm flex-1 min-h-[200px] lg:min-h-[150px] ${isMobile && activeTab === 'editor' ? 'hidden' : 'flex'}`}>
                     <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 bg-neutral-100/50 dark:bg-neutral-900/50 shrink-0">
                       <div className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400">
                         <Type className="w-4 h-4" />
@@ -539,18 +546,18 @@ export default function App() {
           )}
 
             {/* Right Panel: Results */}
-            {(activeTab === 'tokens' || activeTab === 'models' || window.innerWidth >= 1024) && (
+            {(activeTab === 'tokens' || activeTab === 'models' || !isMobile) && (
               <motion.div 
-                key={`right-panel-${activeTab}`}
-                initial={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? 50 : -50 } : false}
+                key={isMobile ? `right-panel-${activeTab}` : 'right-panel-desktop'}
+                initial={isMobile ? { opacity: 0, x: slideDir > 0 ? 50 : -50 } : false}
                 animate={{ opacity: 1, x: 0 }}
-                exit={typeof window !== 'undefined' && window.innerWidth < 1024 ? { opacity: 0, x: slideDir > 0 ? -50 : 50 } : false}
+                exit={isMobile ? { opacity: 0, x: slideDir > 0 ? -50 : 50 } : false}
                 transition={{ duration: 0.3, ease: "easeOut" }}
-                className={`lg:col-span-5 flex flex-col gap-6 lg:overflow-hidden ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'} order-1 lg:order-2 w-full pointer-events-none`}
+                className={`lg:col-span-5 flex flex-col gap-2 lg:gap-3 lg:overflow-hidden min-h-0 ${activeTab === 'editor' ? 'hidden lg:flex' : 'flex'} order-1 lg:order-2 w-full pointer-events-none`}
               >
-                <div className="flex flex-col gap-6 flex-1 pointer-events-auto">
+                <div className="flex flex-col gap-2 lg:gap-3 flex-1 min-h-0 pointer-events-auto">
                   {/* Primary Result: Selected Model & Stats (Visible on Tokens tab on mobile) */}
-                <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-3 lg:p-5 shrink-0 relative overflow-hidden shadow-sm ${activeTab === 'tokens' ? 'block' : 'hidden lg:block'}`}>
+                <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-3 lg:p-4 shrink-0 relative overflow-hidden shadow-sm ${isMobile && activeTab !== 'tokens' ? 'hidden' : 'block'}`}>
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500 opacity-50"></div>
                   
                   <div className="flex items-start justify-between mb-2 lg:mb-3">
@@ -602,7 +609,7 @@ export default function App() {
                 </div>
 
                 {/* Models List */}
-                <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col flex-1 min-h-[400px] lg:min-h-0 lg:overflow-hidden shadow-sm ${activeTab === 'models' ? 'flex' : 'hidden lg:flex'}`}>
+                <div className={`bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col flex-1 min-h-[300px] lg:min-h-0 lg:overflow-hidden shadow-sm ${isMobile && activeTab !== 'models' ? 'hidden' : 'flex'}`}>
                   <div className="flex-1 overflow-y-auto p-2">
                     <ul className="space-y-1">
                       {MODELS.map(model => {
